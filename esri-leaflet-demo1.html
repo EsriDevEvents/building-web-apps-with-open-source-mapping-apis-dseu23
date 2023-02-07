@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Search for feature layer data (map service)</title>
+    <meta name="viewport" content="initial-scale=1, maximum-scale=1, user-scalable=no" />
+    <!-- Load Leaflet from CDN -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" crossorigin="" />
+    <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js" crossorigin=""></script>
+
+    <!-- Load Esri Leaflet from CDN -->
+    <script src="https://unpkg.com/esri-leaflet@^3.0.9/dist/esri-leaflet.js"></script>
+    <script src="https://unpkg.com/esri-leaflet-vector@4.0.0/dist/esri-leaflet-vector.js"></script>
+
+    <!-- Load Esri Leaflet Geocoder from CDN -->
+    <link rel="stylesheet" href="https://unpkg.com/esri-leaflet-geocoder@^3.1.3/dist/esri-leaflet-geocoder.css">
+    <script src="https://unpkg.com/esri-leaflet-geocoder@^3.1.3/dist/esri-leaflet-geocoder.js"></script>
+    <style>
+      html,
+      body,
+      #map {
+        padding: 0;
+        margin: 0;
+        height: 100%;
+        width: 100%;
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 14px;
+        color: #323232;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="map"></div>
+    <script>
+      const apiKey = "YOUR_API_KEY";
+      const basemapEnum = "dcd8222f23fc471db290198956f87424"; //Basemap layer service
+      const map = L.map("map", {
+        minZoom: 2,
+        maxZoom: 11
+      }).setView([38.9, -77.05], 11); //Latitude, longitude
+
+      L.esri.Vector.vectorBasemapLayer(basemapEnum, {
+        apiKey: apiKey
+      }).addTo(map);
+
+// Add Providers
+      const geocodingService = L.esri.Geocoding.arcgisOnlineProvider({
+          apikey: apiKey,
+          nearby: {
+            lat: 38.9,
+            lng: -77.05
+          }
+      });
+      
+      const weather = L.esri.Geocoding.featureLayerProvider({
+        url: "https://services9.arcgis.com/RHVPKKiFTONKtxq3/ArcGIS/rest/services/NOAA_METAR_current_wind_speed_direction_v1/FeatureServer/0"
+, //Living atlas: Weather Updates
+        searchFields: ["STATION_NAME","TEMP"],
+        label: "Current Weather",
+        formatSuggestion: function(feature){
+          return feature.properties.STATION_NAME + " - " + "Curr Temp: " + feature.properties.TEMP + "°F"
+        }
+      })
+
+  // Add Search Control
+      const searchControl = L.esri.Geocoding.geosearch({
+        position: "topright",
+        useMapBounds: false,
+        placeholder: "Enter address, station name or temp",
+        providers: [geocodingService, weather]
+      }).addTo(map);
+
+// Display results 
+      const results = L.layerGroup().addTo(map);
+      searchControl.on("results", (data) => {
+        results.clearLayers();
+        for (let i = data.results.length - 1; i >= 0; i--) {
+          let placeString = data.results[i].text;
+            let marker = L.marker(data.results[i].latlng);
+            marker.bindPopup(`<b>${placeString}</b>`);
+            results.addLayer(marker);
+            marker.openPopup();
+        }
+      });
+    </script>
+  </body>
+</html>
