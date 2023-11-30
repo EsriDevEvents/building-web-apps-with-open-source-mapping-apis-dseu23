@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="initial-scale=1,maximum-scale=1,user-scalable=no"
+    />
+    <script src="https://unpkg.com/maplibre-gl/dist/maplibre-gl.js"></script>
+    <link href="https://unpkg.com/maplibre-gl/dist/maplibre-gl.css" rel="stylesheet"/>
+    <style>
+      html,
+      body,
+      #map {
+        padding: 0;
+        margin: 0;
+        height: 100%;
+        width: 100%;
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 14px;
+        color: #323232;
+      }
+      .map-overlay {
+        position: absolute;
+        top: 0;
+        right: 0;
+        background: rgba(255, 255, 255, 0.8);
+        margin-right: 20px;
+        font-family: Arial, sans-serif;
+        overflow: auto;
+        border-radius: 3px;
+      }
+
+      #legend {
+        padding: 10px;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+        line-height: 18px;
+        height: 150px;
+        margin-top: 40px;
+        width: 100px;
+      }
+      .legend-key {
+        display: inline-block;
+        border-radius: 20%;
+        width: 10px;
+        height: 10px;
+        margin-right: 5px;
+      }
+      .legend-key.good{ background-color: #267300 }
+      .legend-key.fair{ background-color: #38A800 }
+      .legend-key.poor{ background-color: #E6E600 }
+      .legend-key.dead{ background-color: #ED5151 }
+      
+    </style>
+    <script src="config.js"></script>
+  </head>
+  <body>
+    <div id="map"></div>
+    <div class="map-overlay" id="legend">
+      <p><b>Tree health</b></p>
+      <div><span class="legend-key good"></span><span>Good</span></div>
+      <div><span class="legend-key fair"></span><span>Fair</span></div>
+      <div><span class="legend-key poor"></span><span>Poor</span></div>
+      <div><span class="legend-key dead"></span><span>Dead</span></div>
+   </div>
+    <script>
+      
+      // Custom basemap style
+      const spec = "styles";
+      const dataSource = "items";
+      const style = "6976148c11bd497d8624206f9ee03e30";
+      const map = new maplibregl.Map({
+        container: "map",
+        style: `https://basemapstyles-api.arcgis.com/arcgis/rest/services/styles/v2/${spec}/${dataSource}/${style}?token=${apiKey}`,
+        zoom: 12,
+        center: [-122.675, 45.5051],
+      });
+
+      map.on("load", () => {
+
+        // Add a vector tile layer
+        const sourceLayerId = "treeLayer"; // Give it any name
+        
+        map.addSource(sourceLayerId, {
+          type: "vector", // We are adding a vector layer
+          tiles: [
+            "https://vectortileservices8.arcgis.com/87xMVlxSyDt491tZ/arcgis/rest/services/treevtl_demo/VectorTileServer/tile/{z}/{y}/{x}.pbf",
+          ],
+        });
+
+        // map.addLayer({
+        //   "id": "PDX Trees",
+        //   "type": "circle",
+        //   "source": sourceLayerId,
+        //   "source-layer": "PDX Trees",
+        //   "minzoom": 9,
+        //   "paint": {
+        //       "circle-color": "#267300",
+        //       "circle-radius": 3
+        //   }
+        // });
+
+        // Explore available attributes from item page > settings > configure attributes
+        const attributeName = "_symbol";
+        const symbols = [ 
+          {
+            // Layer ID used in the VTSE and to reference the layer in the code
+            id: "treefair", 
+            // We will compare if attributeName == value
+            value: 0, 
+            // We will use a circle
+            color: "#38A800"
+          }, 
+          {id: "treegood", value: 1, color: "#267300"}, 
+          {id: "treepoor", value: 2, color: "#E6E600"}, 
+          {id: "treedead", value: 3, color: "#ED5151"}
+        ];
+        
+        symbols.forEach((s) => {
+          map.addLayer({
+            id: s.id,
+            source: sourceLayerId,
+            "source-layer": "PDX Trees", // Get value from ${serverURL}/resources/styles/root.json?f=pjson
+            // Apply this style to geometries which attributeName == s.value
+            filter: ["==", attributeName, s.value], 
+            type: "circle", // https://docs.mapbox.com/style-spec/reference/layers/#circle
+            paint: {
+              "circle-color": s.color,
+              "circle-radius": 3,
+            },
+            minzoom: 9,
+            layout: {}
+          });
+        });
+
+        const popup = new maplibregl.Popup({ closeButton: false });
+
+        map.on("mousemove", (e) => {
+
+          const features = map.queryRenderedFeatures(e.point);
+
+          // Get properties of all interseted features
+          const displayFeat = [];
+          features.forEach((feat) => {
+              if(feat.layer["source-layer"] == "PDX Trees"){
+                displayFeat.push({
+                  properties: feat['properties']
+                });
+              }
+          });
+
+          if(displayFeat.length > 0){
+            popup
+              .setLngLat(e.lngLat)
+              .setHTML(`${e.lngLat}
+                <code>
+                  <pre>${JSON.stringify(displayFeat, null, 2)}</pre>
+                </code>
+              `)
+              .setMaxWidth("500px")
+              .addTo(map);
+          }
+        });
+
+        symbols.forEach(s => {
+          map.on("mouseleave", s.id, (e) => {
+            // console.log("here")
+            // debugger
+            popup.remove();
+          });
+        })
+        
+
+        
+      });
+    </script>
+  </body>
+</html>

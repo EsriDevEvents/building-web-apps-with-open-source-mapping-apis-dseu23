@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no" />
+  <title>Leaflet closest facility</title>
+
+  <!-- Load Leaflet from CDN -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.2/dist/leaflet.css"
+    integrity="sha256-sA+zWATbFveLLNqWO2gtiw3HL/lh1giY/Inf1BJ0z14="
+    crossorigin=""/>
+  <script src="https://unpkg.com/leaflet@1.9.2/dist/leaflet.js"
+    integrity="sha256-o9N1jGDZrf5tS+Ft4gbIK7mYMipq9lqpVJ91xHSyKhg="
+    crossorigin=""></script>
+
+  <!-- Load Esri Leaflet from CDN -->
+  <script src="https://unpkg.com/esri-leaflet@3.0.8/dist/esri-leaflet.js"></script>
+  <script src="https://unpkg.com/esri-leaflet-vector@4.0.0/dist/esri-leaflet-vector.js"></script>
+
+  <!-- Load Esri Leaflet Geocoder from CDN -->
+  <link rel="stylesheet" href="https://unpkg.com/esri-leaflet-geocoder@3.1.3/dist/esri-leaflet-geocoder.css" crossorigin="" />
+  <script src="https://unpkg.com/esri-leaflet-geocoder@3.1.3/dist/esri-leaflet-geocoder.js" crossorigin=""></script>
+
+  <!-- Import REST JS packages -->
+  <script src="https://unpkg.com/@esri/arcgis-rest-request@4.0.3/dist/bundled/request.umd.min.js"></script>
+  <script src="https://unpkg.com/@esri/arcgis-rest-routing@4.0.3/dist/bundled/routing.umd.min.js"></script>
+
+  <style>
+    body { margin:0; padding:0; }
+    #map {
+        position: absolute;
+        top:0;
+        bottom:0;
+        right:0;
+        left:0;
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 14px;
+        color: #323232;
+      }
+
+    .div-icon{
+      filter: drop-shadow( 1px 1px 0px rgba(0, 0, 0, .3))
+    }
+
+    .leaflet-popup-content p {
+      margin: 0
+    }
+    .leaflet-popup-content h3 {
+      margin: 0
+    }
+    .leaflet-popup-content ol {
+      padding: 0rem 14px;
+    }
+
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <script src="config.js"></script>
+  <script>
+    const basemapEnum = "ArcGIS:Navigation";
+
+    const map = L.map('map', {
+      minZoom: 2
+    }).setView([42.36, -71.06], 14);
+
+    L.esri.Vector.vectorBasemapLayer(basemapEnum, {
+      apiKey: apiKey
+    }).addTo(map);
+
+    // Add a living Atlas layer 
+    const snowParkingLayer = L.esri.featureLayer({
+      url: "https://services.arcgis.com/sFnw0xNflSi8J0uh/arcgis/rest/services/SnowParking/FeatureServer/0",
+    }).addTo(map);
+
+    // Load all snow emergency parking lots (needed for closest facility)
+    let facilities;
+    snowParkingLayer.query().run((err, featureSet) => {
+      if(err) {
+        console.error(err);
+      } else {
+        facilities = featureSet.features.map(f => f.geometry.coordinates); 
+      }
+    });
+
+    const searchControl = L.esri.Geocoding.geosearch({
+      position: "topright",
+      placeholder: "Enter an address or place e.g. 1 York St",
+      useMapBounds: false,
+      zoomToResult: false,
+      providers: [L.esri.Geocoding.arcgisOnlineProvider({
+        apikey: apiKey,
+        nearby: [42.36, -71.06],
+      })]
+    }).addTo(map);
+    
+    // Layer where we will draw the result of the geocode
+    const results = L.layerGroup().addTo(map);
+
+    // Leaflet marker (red)
+    // https://github.com/pointhi/leaflet-color-markers
+    const startIconRed = new L.Icon({
+      iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+      shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+      iconSize: [25, 41],
+      iconAnchor: [12, 41],
+      popupAnchor: [1, -34],
+      shadowSize: [41, 41]
+    });
+
+    searchControl.on("results", data => {
+      results.clearLayers();
+      if(data.results.length) {
+        const latlng = data.results[0].latlng; //Geocode address 
+        const marker = L.marker(latlng, { icon: startIconRed });
+        results.addLayer(marker);
+        getClosestFacility(latlng).then(showClosestFacility);
+      }
+    });
+
+    const authentication = arcgisRest.ApiKeyManager.fromKey(apiKey);
+
+    function getClosestFacility(latlng){
+        return arcgisRest.closestFacility({
+          incidents: [
+            [latlng.lng, latlng.lat] // Where you searched
+          ],
+          facilities: facilities,
+          returnCFRoutes: true, // Return the best route
+          params: {
+            defaultTargetFacilityCount: 1, // Only one 
+            impedanceAttributeName: 'Miles'
+          },
+          authentication: authentication
+        });
+    }
+
+    const routeLines = L.layerGroup().addTo(map);
+
+    function showClosestFacility(facilityResponse){
+      routeLines.clearLayers();
+    
+      const { routes, directions } = facilityResponse;
+
+      // Draw route to the closest
+      const route = L.geoJSON(routes.geoJson).addTo(routeLines);
+      map.fitBounds(route.getBounds());
+
+      // Get indications turn by turn directions
+      const { features, summary } = directions[0];
+
+      const distance = Math.round(summary.totalLength);
+      route.bindPopup(`
+        <h3>Directions</h3>
+        <p>${Math.round(summary.totalTime)} minutes <i>(${distance} ${distance === 1 ? 'mile' : 'miles'})</i></p>
+        <ol>
+          <li>${features.map(directions => directions.attributes.text).join("</li><li>")}</li>
+        </ol>
+      `);
+      route.openPopup();
+    }
+  
+
+  </script>
+
+</body>
+</html>

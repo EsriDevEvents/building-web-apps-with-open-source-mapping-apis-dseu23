@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta
+  name="viewport"
+  content="initial-scale=1,maximum-scale=1,user-scalable=no"
+  />
+  <script src="https://api.tiles.mapbox.com/mapbox-gl-js/v1.12.0/mapbox-gl.js"></script>
+  <link
+  href="https://api.tiles.mapbox.com/mapbox-gl-js/v1.12.0/mapbox-gl.css"
+  rel="stylesheet"
+  />
+  <style>
+    html,
+    body,
+    #map {
+      padding: 0;
+      margin: 0;
+      height: 100%;
+      width: 100%;
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 14px;
+      color: #323232;
+    }
+    .map-overlay {
+      position: absolute;
+      top: 0;
+      right: 0;
+      background: rgba(255, 255, 255, 0.8);
+      margin-right: 20px;
+      font-family: Arial, sans-serif;
+      overflow: auto;
+      border-radius: 3px;
+    }
+    
+    #legend {
+      padding: 10px;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+      line-height: 18px;
+      height: 150px;
+      margin-top: 40px;
+      width: 100px;
+    }
+    .legend-key {
+      display: inline-block;
+      border-radius: 20%;
+      width: 10px;
+      height: 10px;
+      margin-right: 5px;
+    }
+    #features {
+      position: absolute;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      width: 50%;
+      overflow: auto;
+      background: rgba(255, 255, 255, 0.8);
+    }
+    
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <pre id="features"></pre>
+  <script src="config.js"></script>
+  <script>
+    // Display a basemap layer
+    const basemapEnum = "items/6976148c11bd497d8624206f9ee03e30";
+    const map = new mapboxgl.Map({
+      container: "map",
+      style: `https://basemapstyles-api.arcgis.com/arcgis/rest/services/styles/v2/styles/${basemapEnum}?type=style&token=${apiKey}`,
+      zoom: 12,
+        center: [-122.675, 45.5051],
+    });
+    
+    map.on("load", () => {
+      
+      const sourceLayerId = "treeLayer"; // Give it any name
+      map.addSource(sourceLayerId, {
+        type: "vector", // We are adding a vector layer
+        tiles: [
+          "https://vectortileservices8.arcgis.com/87xMVlxSyDt491tZ/arcgis/rest/services/treevtl_demo/VectorTileServer/tile/{z}/{y}/{x}.pbf",
+        ],
+      });
+
+      map.addLayer({
+        "id": "PDX Trees",
+        "type": "circle",
+        "source": sourceLayerId,
+        "source-layer": "PDX Trees",
+        "minzoom": 9,
+        "paint": {
+            "circle-color": "#267300",
+            "circle-radius": 3
+        }
+      });
+
+      map.moveLayer('PDX Trees');
+      
+      map.on('mousemove', (e) => {
+        const features = map.queryRenderedFeatures(e.point);
+        
+        // Limit the number of properties we're displaying for
+        // legibility and performance
+        const displayProperties = [
+        'type',
+        'properties',
+        'id',
+        'layer',
+        'source',
+        'sourceLayer',
+        'state'
+        ];
+        
+        const displayFeatures = features.map((feat) => {
+          const displayFeat = {};
+          displayProperties.forEach((prop) => {
+            displayFeat[prop] = feat[prop];
+          });
+          return displayFeat;
+        });
+        
+        document.getElementById('features').innerHTML = JSON.stringify(
+        displayFeatures,
+        null,
+        2
+        );
+      });
+    });
+  </script>
+</body>
+</html>
